@@ -257,9 +257,22 @@ export default function CameraViewfinder({
       const video = videoRef.current;
       const canvas = document.createElement("canvas");
       
-      // Keep real dimensions
-      canvas.width = video.videoWidth || 1280;
-      canvas.height = video.videoHeight || 720;
+      // Keep real dimensions, but caps max dimension to 1600px to avoid memory overflow & string layout limits on Safari/iOS
+      let targetWidth = video.videoWidth || 1280;
+      let targetHeight = video.videoHeight || 720;
+      const maxDimension = 1600;
+      if (targetWidth > maxDimension || targetHeight > maxDimension) {
+        if (targetWidth > targetHeight) {
+          targetHeight = Math.round((targetHeight * maxDimension) / targetWidth);
+          targetWidth = maxDimension;
+        } else {
+          targetWidth = Math.round((targetWidth * maxDimension) / targetHeight);
+          targetHeight = maxDimension;
+        }
+      }
+
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
       const ctx = canvas.getContext("2d");
       
       if (ctx) {
@@ -271,8 +284,8 @@ export default function CameraViewfinder({
         
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         
-        // Export base64 jpeg
-        const base64Url = canvas.toDataURL("image/jpeg", 0.9);
+        // Export base64 jpeg with safe 0.8 compression to keep base64 within small memory bounds
+        const base64Url = canvas.toDataURL("image/jpeg", 0.8);
         const sizeInBytes = Math.round((base64Url.length * 3) / 4);
         const sizeFormatted = (sizeInBytes / 1024).toFixed(1) + " KB";
         
@@ -380,11 +393,13 @@ export default function CameraViewfinder({
         };
 
         mediaRecorder.onstop = () => {
+          const actualType = mediaRecorder.mimeType || "video/webm";
           const blob = new Blob(recordedChunksRef.current, {
-            type: "video/webm",
+            type: actualType,
           });
           
-          const filename = `JUBA_VIDEO_${new Date().getTime()}.webm`;
+          const fileExt = actualType.includes("mp4") ? "mp4" : "webm";
+          const filename = `JUBA_VIDEO_${new Date().getTime()}.${fileExt}`;
           const sizeInBytes = blob.size;
           const sizeFormatted = (sizeInBytes / (1024 * 1024)).toFixed(2) + " MB";
 
@@ -397,7 +412,7 @@ export default function CameraViewfinder({
               url: base64Url,
               name: filename,
               sizeFormatted,
-              fileType: "video/webm",
+              fileType: actualType,
             });
           };
           reader.readAsDataURL(blob);
