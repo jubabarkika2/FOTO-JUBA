@@ -188,7 +188,13 @@ export default function App() {
         body: JSON.stringify(payload),
       });
 
-      const result = await res.json();
+      let result: any = {};
+      const responseText = await res.text();
+      try {
+        result = JSON.parse(responseText);
+      } catch (err) {
+        result = { error: `Erro de resposta do servidor (HTTP ${res.status}): ${responseText.substring(0, 160) || "Resposta vazia"}` };
+      }
 
       if (res.ok) {
         // Success
@@ -197,7 +203,7 @@ export default function App() {
         fetchOutbox(); // refresh history list
       } else {
         // API error
-        showToast(result.error || "Erro no envio do e-mail. Verifique suas conexões.", "error");
+        showToast(result.error || `Erro (${res.status}): Falha no envio do e-mail.`, "error");
         fetchOutbox(); // refresh logs because failed state logging was saved in metadata outbox
       }
     } catch (e: any) {

@@ -299,74 +299,255 @@ export default function CameraViewfinder({
         });
       }
     } else {
-      // Simulator scene capture
+      // Simulator scene capture (using local canvas vectors to guarantee zero CORS canvas tainting on Safari/iOS)
       const currentScene = SIMULATED_SCENES[simSceneIndex];
-      // Create mockup canvas with unsplash image or simulated metadata
       const canvas = document.createElement("canvas");
       canvas.width = 1280;
       canvas.height = 720;
       const ctx = canvas.getContext("2d");
       
       if (ctx) {
-        // Render background color
-        ctx.fillStyle = "#121212";
+        // Underlay backdrop
+        ctx.fillStyle = "#0c0a0f";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Load target scenic image
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.src = currentScene.url;
-        img.onload = () => {
-          // Draw image
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        // DRAW PROCEDURAL ARTWORK BASED ON THE SCENE INDEX
+        if (simSceneIndex === 0) {
+          // "Estúdio Juba Foto": Warm radial gradient highlight with visual guides
+          const grad = ctx.createRadialGradient(
+            canvas.width / 2, canvas.height / 2, 80,
+            canvas.width / 2, canvas.height / 2, 550
+          );
+          grad.addColorStop(0, "#2a2830");
+          grad.addColorStop(0.5, "#16141c");
+          grad.addColorStop(1, "#08070b");
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
           
-          // Draw watermark logo JUBA FOTO and simulation info
-          ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
-          ctx.fillRect(20, 20, 260, 60);
+          // Draw geometric softbox / studio rig wireframes
+          ctx.strokeStyle = "rgba(16, 185, 129, 0.4)";
+          ctx.lineWidth = 2.5;
+          ctx.strokeRect(120, 150, 160, 220);
+          ctx.beginPath();
+          ctx.moveTo(200, 370);
+          ctx.lineTo(200, 580);
+          ctx.stroke();
           
-          ctx.fillStyle = "#10b981"; // Emerald green
-          ctx.font = "bold 18px sans-serif";
-          ctx.fillText("JUBA FOTO", 40, 48);
+          // Outer spotlight circles
+          ctx.strokeStyle = "rgba(16, 185, 129, 0.2)";
+          ctx.beginPath();
+          ctx.arc(canvas.width - 250, 250, 90, 0, Math.PI * 2);
+          ctx.stroke();
           
-          ctx.fillStyle = "#ffffff";
-          ctx.font = "12px monospace";
-          ctx.fillText(`Zoom: ${zoomLevel}x | ${currentScene.title}`, 40, 65);
+          ctx.fillStyle = "rgba(16, 185, 129, 0.1)";
+          ctx.fill();
           
-          const base64Url = canvas.toDataURL("image/jpeg", 0.95);
-          const sizeInBytes = Math.round((base64Url.length * 3) / 4);
-          const sizeFormatted = (sizeInBytes / 1024).toFixed(1) + " KB";
+          // Golden ratio focus circle in center
+          ctx.strokeStyle = "#10b981";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(canvas.width / 2, canvas.height / 2, 120, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (simSceneIndex === 1) {
+          // "Modelo Retrato Clássico": Classic elegant deep blue gradient and portrait outline
+          const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+          grad.addColorStop(0, "#111827"); // Indigo-950
+          grad.addColorStop(0.5, "#1f1e3d"); // Purple-950
+          grad.addColorStop(1, "#030712");
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
           
-          onMediaCaptured({
-            id: "slots_sim_" + Math.random().toString(36).substr(2, 9),
-            type: "photo",
-            url: base64Url,
-            name: `SIM_${filename}`,
-            sizeFormatted,
-            fileType: "image/jpeg",
-          });
-        };
-        // Simple immediate fallback if unsplash blocks load in canvas
-        setTimeout(() => {
-          ctx.fillStyle = "#10b981";
-          ctx.font = "bold 42px sans-serif";
-          ctx.fillText("JUBA FOTO", 300, 300);
-          ctx.fillStyle = "#ffffff";
-          ctx.font = "20px monospace";
-          ctx.fillText(`CENA SIMULADA: ${currentScene.title} (${zoomLevel}x)`, 300, 350);
+          // Golden/amber hair backdrop light glow
+          const halo = ctx.createRadialGradient(
+            canvas.width / 2, canvas.height / 2 - 40, 30,
+            canvas.width / 2, canvas.height / 2 - 40, 250
+          );
+          halo.addColorStop(0, "rgba(245, 158, 11, 0.35)"); // warm amber
+          halo.addColorStop(1, "rgba(245, 158, 11, 0)");
+          ctx.fillStyle = halo;
+          ctx.beginPath();
+          ctx.arc(canvas.width / 2, canvas.height / 2 - 40, 220, 0, Math.PI * 2);
+          ctx.fill();
           
-          const base64Url = canvas.toDataURL("image/jpeg", 0.85);
-          const sizeInBytes = Math.round((base64Url.length * 3) / 4);
-          const sizeFormatted = (sizeInBytes / 1024).toFixed(1) + " KB";
+          // Silhouette profile of model avatar (shoulders)
+          ctx.fillStyle = "#09050d";
+          ctx.beginPath();
+          ctx.ellipse(canvas.width / 2, canvas.height + 60, 250, 190, 0, Math.PI, Math.PI * 2);
+          ctx.fill();
           
-          onMediaCaptured({
-            id: "sim_fallback_" + Math.random().toString(36).substr(2, 9),
-            type: "photo",
-            url: base64Url,
-            name: `MOCK_${filename}`,
-            sizeFormatted,
-            fileType: "image/jpeg",
-          });
-        }, 300);
+          // neck
+          ctx.fillRect(canvas.width / 2 - 45, canvas.height - 200, 90, 140);
+          
+          // head
+          ctx.beginPath();
+          ctx.arc(canvas.width / 2, canvas.height / 2 - 30, 95, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Draw cool minimalist camera viewfinder brackets on head
+          ctx.strokeStyle = "#10b981";
+          ctx.lineWidth = 3;
+          
+          // top left bracket
+          ctx.beginPath();
+          ctx.moveTo(canvas.width / 2 - 130, canvas.height / 2 - 130);
+          ctx.lineTo(canvas.width / 2 - 100, canvas.height / 2 - 130);
+          ctx.moveTo(canvas.width / 2 - 130, canvas.height / 2 - 130);
+          ctx.lineTo(canvas.width / 2 - 130, canvas.height / 2 - 100);
+          ctx.stroke();
+          
+          // bottom right bracket
+          ctx.beginPath();
+          ctx.moveTo(canvas.width / 2 + 130, canvas.height / 2 + 70);
+          ctx.lineTo(canvas.width / 2 + 100, canvas.height / 2 + 70);
+          ctx.moveTo(canvas.width / 2 + 130, canvas.height / 2 + 70);
+          ctx.lineTo(canvas.width / 2 + 130, canvas.height / 2 + 40);
+          ctx.stroke();
+        } else if (simSceneIndex === 2) {
+          // "Ensaio Fotográfico Natureza": Vibrant dusk sunset with geometric mountain peaks and pines
+          const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+          grad.addColorStop(0, "#f97316"); // bright sunset orange
+          grad.addColorStop(0.5, "#db2777"); // dark magenta
+          grad.addColorStop(1, "#311042"); // deep purple
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          // Sun disc
+          ctx.fillStyle = "#fffbeb";
+          ctx.beginPath();
+          ctx.arc(canvas.width / 2 + 180, 240, 75, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Dark mountain silhouette
+          ctx.fillStyle = "#0c051a";
+          ctx.beginPath();
+          ctx.moveTo(-50, canvas.height);
+          ctx.lineTo(300, 420);
+          ctx.lineTo(700, canvas.height);
+          ctx.closePath();
+          ctx.fill();
+          
+          ctx.beginPath();
+          ctx.moveTo(500, canvas.height);
+          ctx.lineTo(950, 360);
+          ctx.lineTo(canvas.width + 100, canvas.height);
+          ctx.closePath();
+          ctx.fill();
+          
+          // Local helper to draw vector pine trees
+          const drawPine = (x: number, baseHeight: number) => {
+            const trunkWidth = 14;
+            const trunkHeight = 45;
+            
+            // Draw Trunk
+            ctx.fillStyle = "#05010a";
+            ctx.fillRect(x - trunkWidth / 2, canvas.height - baseHeight, trunkWidth, baseHeight);
+            
+            // Draw pine leaf layers
+            ctx.fillStyle = "#080312";
+            for (let i = 0; i < 3; i++) {
+              ctx.beginPath();
+              const levelY = canvas.height - baseHeight - (i * 40);
+              ctx.moveTo(x, levelY - 80);
+              ctx.lineTo(x - 55 + (i * 10), levelY);
+              ctx.lineTo(x + 55 - (i * 10), levelY);
+              ctx.closePath();
+              ctx.fill();
+            }
+          };
+          
+          drawPine(130, 100);
+          drawPine(1120, 120);
+        } else {
+          // "Arquitetura Urbana": Dark cityscape with blue/pink neon windows & gridded gridstars
+          const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+          grad.addColorStop(0, "#020617"); // midnight slate
+          grad.addColorStop(0.6, "#1e1b4b"); // indigo sky
+          grad.addColorStop(1, "#170c24"); // neon glow base
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          // Draw random pixel stars
+          ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+          for (let i = 0; i < 30; i++) {
+            const sx = (i * 81 + 29) % canvas.width;
+            const sy = (i * 59 + 47) % 320;
+            ctx.fillRect(sx, sy, 2, 2);
+          }
+          
+          // Draw geometric skyscrapers (neon framed silhouettes)
+          const drawSkyscraper = (xOffset: number, width: number, height: number, neonColor: string) => {
+            const topY = canvas.height - height;
+            ctx.fillStyle = "#030206";
+            ctx.fillRect(xOffset, topY, width, height);
+            
+            // Neon accent border
+            ctx.strokeStyle = neonColor;
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(xOffset, topY, width, height);
+            
+            // Draw windows helper
+            ctx.fillStyle = "rgba(56, 189, 248, 0.65)"; // glowing cyan sky window
+            for (let wy = topY + 25; wy < canvas.height - 15; wy += 40) {
+              for (let wx = xOffset + 15; wx < xOffset + width - 15; wx += 25) {
+                if ((wx + wy) % 5 !== 0) {
+                  ctx.fillRect(wx, wy, 8, 12);
+                }
+              }
+            }
+          };
+          
+          drawSkyscraper(90, 140, 480, "rgba(236, 72, 153, 0.45)"); // pink neon
+          drawSkyscraper(290, 190, 530, "rgba(16, 185, 129, 0.45)"); // green neon
+          drawSkyscraper(550, 130, 410, "rgba(236, 72, 153, 0.45)"); 
+          drawSkyscraper(740, 170, 500, "rgba(56, 189, 248, 0.45)"); // sky blue neon
+          drawSkyscraper(980, 150, 460, "rgba(245, 158, 11, 0.45)"); // amber neon
+        }
+        
+        // 1/3 rules grid lines overlay
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        // vertical lines
+        ctx.moveTo(canvas.width / 3, 0);
+        ctx.lineTo(canvas.width / 3, canvas.height);
+        ctx.moveTo((canvas.width / 3) * 2, 0);
+        ctx.lineTo((canvas.width / 3) * 2, canvas.height);
+        // horizontal lines
+        ctx.moveTo(0, canvas.height / 3);
+        ctx.lineTo(canvas.width, canvas.height / 3);
+        ctx.moveTo(0, (canvas.height / 3) * 2);
+        ctx.lineTo(canvas.width, (canvas.height / 3) * 2);
+        ctx.stroke();
+        
+        // Watermark tag banner JUBA FOTO / SIMULATION MODE info
+        ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
+        ctx.fillRect(35, 35, 290, 80);
+        ctx.strokeStyle = "#10b981";
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(35, 35, 290, 80);
+        
+        ctx.fillStyle = "#10b981";
+        ctx.font = "bold 20px sans-serif";
+        ctx.fillText("JUBA FOTO ©", 55, 68);
+        
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "12px monospace";
+        ctx.fillText(`CENA SIMULADA: ${currentScene.title}`, 55, 91);
+        ctx.fillText(`Zoom Digital: ${zoomLevel.toFixed(1)}x`, 55, 105);
+        
+        // Export base64 jpeg
+        const base64Url = canvas.toDataURL("image/jpeg", 0.85);
+        const sizeInBytes = Math.round((base64Url.length * 3) / 4);
+        const sizeFormatted = (sizeInBytes / 1024).toFixed(1) + " KB";
+        
+        onMediaCaptured({
+          id: "slots_sim_" + Math.random().toString(36).substr(2, 9),
+          type: "photo",
+          url: base64Url,
+          name: `SIM_${filename}`,
+          sizeFormatted,
+          fileType: "image/jpeg",
+        });
       }
     }
   };
@@ -442,16 +623,23 @@ export default function CameraViewfinder({
       // Mock record completion: create a simulated small video log or mock scene log
       const filename = `MOCK_VIDEO_${new Date().getTime()}.webm`;
       
-      // Let's create a beautiful generic mock video payload (a small duration simulated log)
-      // Since it's web-only simulation, we'll configure a solid mock tag
-      onMediaCaptured({
-        id: "mock_vid_" + Math.random().toString(36).substr(2, 9),
-        type: "video",
-        url: "https://www.w3schools.com/html/mov_bbb.mp4", // Small sample trailer to demonstrate live emails & downloads!
-        name: filename,
-        sizeFormatted: "1.24 MB",
-        fileType: "video/mp4",
-      });
+      // Let's create a real valid small inline base64-encoded webm dummy dataUrl
+      // using a lightweight 20-byte dummy chunk read safely as data URL.
+      const dummyData = new Uint8Array([26, 69, 223, 163, 1, 0, 0, 0, 25, 134, 129, 1, 66, 134, 129, 8, 66, 247, 129, 1]);
+      const blob = new Blob([dummyData], { type: "video/webm" });
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64Url = reader.result as string;
+        onMediaCaptured({
+          id: "mock_vid_" + Math.random().toString(36).substr(2, 9),
+          type: "video",
+          url: base64Url,
+          name: filename,
+          sizeFormatted: "0.15 KB",
+          fileType: "video/webm",
+        });
+      };
+      reader.readAsDataURL(blob);
     }
   };
 
