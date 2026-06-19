@@ -1,0 +1,607 @@
+import React, { useState, useEffect, useRef } from "react";
+import { Camera, RefreshCw, ZoomIn, Info, AlertTriangle, Play, Pause, Square } from "lucide-react";
+import { playShutterSound, playBeepSound } from "../utils/audio";
+import { ActiveCapture } from "../types";
+
+// High-quality mock environments for simulation mode when hardware is inaccessible
+const SIMULATED_SCENES = [
+  {
+    title: "Estúdio Juba Foto",
+    url: "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&q=80&w=1200",
+  },
+  {
+    title: "Modelo Retrato Clássico",
+    url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=1200",
+  },
+  {
+    title: "Ensaio Fotográfico Natureza",
+    url: "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?auto=format&fit=crop&q=80&w=1200",
+  },
+  {
+    title: "Arquitetura Urbana",
+    url: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&q=80&w=1200",
+  },
+];
+
+interface CameraViewfinderProps {
+  cameraMode: "foto" | "video";
+  setCameraMode: (mode: "foto" | "video") => void;
+  zoomLevel: number;
+  setZoomLevel: (zoom: number) => void;
+  onMediaCaptured: (capture: ActiveCapture) => void;
+  isSending: boolean;
+}
+
+export default function CameraViewfinder({
+  cameraMode,
+  setCameraMode,
+  zoomLevel,
+  setZoomLevel,
+  onMediaCaptured,
+  isSending,
+}: CameraViewfinderProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [deviceState, setDeviceState] = useState<"loading" | "active" | "denied" | "unsupported">("loading");
+  const [activeFacingMode, setActiveFacingMode] = useState<"user" | "environment">("environment");
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordTimer, setRecordTimer] = useState(0);
+  const [flashActive, setFlashActive] = useState(false);
+  const [sliderOpen, setSliderOpen] = useState(false);
+
+  // For simulation
+  const [simSceneIndex, setSimSceneIndex] = useState(0);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Start feed
+  useEffect(() => {
+    initCamera();
+    return () => {
+      stopCamera();
+    };
+  }, [activeFacingMode]);
+
+  // Handle timer
+  useEffect(() => {
+    if (isRecording) {
+      timerIntervalRef.current = setInterval(() => {
+        setRecordTimer((prev) => prev + 1);
+      }, 1000);
+    } else {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+      setRecordTimer(0);
+    }
+    return () => {
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    };
+  }, [isRecording]);
+
+  const initCamera = async () => {
+    setDeviceState("loading");
+    stopCamera();
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("WebRTC ou getUserMedia não é suportado neste navegador.");
+      }
+
+      // Standard requested constraints
+      const constraints = {
+        video: {
+          facingMode: activeFacingMode,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: true, // required for video audio
+      };
+
+      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      setStream(mediaStream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+      }
+      setDeviceState("active");
+    } catch (error: any) {
+      console.warn("Nenhuma câmera física atribuída ou permissão negada. Ativando simulador.", error);
+      setDeviceState("denied");
+    }
+  };
+
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      setStream(null);
+    }
+  };
+
+  const toggleFacingMode = () => {
+    playBeepSound("click");
+    setActiveFacingMode((prev) => (prev === "user" ? "environment" : "user"));
+  };
+
+  // Convert timer values
+  const formatTime = (secs: number) => {
+    const minutes = Math.floor(secs / 60);
+    const remainingSeconds = secs % 60;
+    return `${minutes.toString().padStart(2, "0")}:${remainingSeconds.toString().padStart(2, "0")}`;
+  };
+
+  // ZOOM IPHONE-STYLE BEHAVIOR
+  // Clicking cycles: 0.5x -> 1.0x -> 3.0x -> 10.0x -> 15.0x -> 0.5x
+  const cycleZoom = () => {
+    playBeepSound("click");
+    if (zoomLevel === 0.5) setZoomLevel(1);
+    else if (zoomLevel === 1) setZoomLevel(3);
+    else if (zoomLevel === 3) setZoomLevel(10);
+    else if (zoomLevel === 10) setZoomLevel(15);
+    else setZoomLevel(0.5);
+  };
+
+  // Capture Photo Action
+  const triggerTakePhoto = () => {
+    playShutterSound();
+    setFlashActive(true);
+    setTimeout(() => {
+      setFlashActive(false);
+    }, 150);
+
+    const filename = `JUBA_FOTO_${new Date().getTime()}.jpg`;
+
+    if (deviceState === "active" && videoRef.current) {
+      // Draw frame to canvas
+      const video = videoRef.current;
+      const canvas = document.createElement("canvas");
+      
+      // Keep real dimensions
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      const ctx = canvas.getContext("2d");
+      
+      if (ctx) {
+        // Apply flip if user facing
+        if (activeFacingMode === "user") {
+          ctx.translate(canvas.width, 0);
+          ctx.scale(-1, 1);
+        }
+        
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // Export base64 jpeg
+        const base64Url = canvas.toDataURL("image/jpeg", 0.9);
+        const sizeInBytes = Math.round((base64Url.length * 3) / 4);
+        const sizeFormatted = (sizeInBytes / 1024).toFixed(1) + " KB";
+        
+        onMediaCaptured({
+          id: "cap_" + Math.random().toString(36).substr(2, 9),
+          type: "photo",
+          url: base64Url,
+          name: filename,
+          sizeFormatted,
+          fileType: "image/jpeg",
+        });
+      }
+    } else {
+      // Simulator scene capture
+      const currentScene = SIMULATED_SCENES[simSceneIndex];
+      // Create mockup canvas with unsplash image or simulated metadata
+      const canvas = document.createElement("canvas");
+      canvas.width = 1280;
+      canvas.height = 720;
+      const ctx = canvas.getContext("2d");
+      
+      if (ctx) {
+        // Render background color
+        ctx.fillStyle = "#121212";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Load target scenic image
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.src = currentScene.url;
+        img.onload = () => {
+          // Draw image
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          
+          // Draw watermark logo JUBA FOTO and simulation info
+          ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+          ctx.fillRect(20, 20, 260, 60);
+          
+          ctx.fillStyle = "#10b981"; // Emerald green
+          ctx.font = "bold 18px sans-serif";
+          ctx.fillText("JUBA FOTO", 40, 48);
+          
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "12px monospace";
+          ctx.fillText(`Zoom: ${zoomLevel}x | ${currentScene.title}`, 40, 65);
+          
+          const base64Url = canvas.toDataURL("image/jpeg", 0.95);
+          const sizeInBytes = Math.round((base64Url.length * 3) / 4);
+          const sizeFormatted = (sizeInBytes / 1024).toFixed(1) + " KB";
+          
+          onMediaCaptured({
+            id: "slots_sim_" + Math.random().toString(36).substr(2, 9),
+            type: "photo",
+            url: base64Url,
+            name: `SIM_${filename}`,
+            sizeFormatted,
+            fileType: "image/jpeg",
+          });
+        };
+        // Simple immediate fallback if unsplash blocks load in canvas
+        setTimeout(() => {
+          ctx.fillStyle = "#10b981";
+          ctx.font = "bold 42px sans-serif";
+          ctx.fillText("JUBA FOTO", 300, 300);
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "20px monospace";
+          ctx.fillText(`CENA SIMULADA: ${currentScene.title} (${zoomLevel}x)`, 300, 350);
+          
+          const base64Url = canvas.toDataURL("image/jpeg", 0.85);
+          const sizeInBytes = Math.round((base64Url.length * 3) / 4);
+          const sizeFormatted = (sizeInBytes / 1024).toFixed(1) + " KB";
+          
+          onMediaCaptured({
+            id: "sim_fallback_" + Math.random().toString(36).substr(2, 9),
+            type: "photo",
+            url: base64Url,
+            name: `MOCK_${filename}`,
+            sizeFormatted,
+            fileType: "image/jpeg",
+          });
+        }, 300);
+      }
+    }
+  };
+
+  // Video recording actions
+  const startRecording = () => {
+    if (deviceState === "active" && stream) {
+      playBeepSound("start");
+      recordedChunksRef.current = [];
+      
+      let options = {};
+      if (MediaRecorder.isTypeSupported("video/webm")) {
+        options = { mimeType: "video/webm;codecs=vp9" };
+      } else if (MediaRecorder.isTypeSupported("video/mp4")) {
+        options = { mimeType: "video/mp4" };
+      }
+
+      try {
+        const mediaRecorder = new MediaRecorder(stream, options);
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            recordedChunksRef.current.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunksRef.current, {
+            type: "video/webm",
+          });
+          
+          const filename = `JUBA_VIDEO_${new Date().getTime()}.webm`;
+          const sizeInBytes = blob.size;
+          const sizeFormatted = (sizeInBytes / (1024 * 1024)).toFixed(2) + " MB";
+
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64Url = reader.result as string;
+            onMediaCaptured({
+              id: "vid_" + Math.random().toString(36).substr(2, 9),
+              type: "video",
+              url: base64Url,
+              name: filename,
+              sizeFormatted,
+              fileType: "video/webm",
+            });
+          };
+          reader.readAsDataURL(blob);
+        };
+
+        mediaRecorderRef.current = mediaRecorder;
+        mediaRecorder.start();
+        setIsRecording(true);
+      } catch (err) {
+        console.error("Iniciando gravador falhou:", err);
+        alert("Problema ao iniciar gravação de áudio/vídeo. Ative o simulador.");
+      }
+    } else {
+      // Simulator Record
+      playBeepSound("start");
+      setIsRecording(true);
+    }
+  };
+
+  const stopRecording = () => {
+    playBeepSound("stop");
+    setIsRecording(false);
+
+    if (deviceState === "active" && mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+    } else {
+      // Mock record completion: create a simulated small video log or mock scene log
+      const filename = `MOCK_VIDEO_${new Date().getTime()}.webm`;
+      
+      // Let's create a beautiful generic mock video payload (a small duration simulated log)
+      // Since it's web-only simulation, we'll configure a solid mock tag
+      onMediaCaptured({
+        id: "mock_vid_" + Math.random().toString(36).substr(2, 9),
+        type: "video",
+        url: "https://www.w3schools.com/html/mov_bbb.mp4", // Small sample trailer to demonstrate live emails & downloads!
+        name: filename,
+        sizeFormatted: "1.24 MB",
+        fileType: "video/mp4",
+      });
+    }
+  };
+
+  const handleCaptureTrigger = () => {
+    if (cameraMode === "foto") {
+      triggerTakePhoto();
+    } else {
+      if (isRecording) {
+        stopRecording();
+      } else {
+        startRecording();
+      }
+    }
+  };
+
+  // Change simulated background scenery
+  const nextScene = () => {
+    playBeepSound("click");
+    setSimSceneIndex((prev) => (prev + 1) % SIMULATED_SCENES.length);
+  };
+
+  // Active styles for camera Zooming
+  const zoomStyle = {
+    transform: `scale(${zoomLevel})`,
+    transition: "transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+    transformOrigin: "center center",
+  };
+
+  return (
+    <div className="relative w-full h-full bg-zinc-950 overflow-hidden flex items-center justify-center select-none">
+      
+      {/* SHUTTER FLASH EFFECT */}
+      <div 
+        className={`absolute inset-0 z-40 bg-white transition-opacity duration-150 pointer-events-none ${
+          flashActive ? "opacity-100" : "opacity-0"
+        }`} 
+      />
+
+      {/* RENDER ACTIVE STREAM */}
+      {deviceState === "active" ? (
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          style={zoomStyle}
+          className={`w-full h-full object-cover select-none ${
+            activeFacingMode === "user" ? "-scale-x-100" : ""
+          }`}
+        />
+      ) : (
+        /* SIMULATION VIEWFINDER */
+        <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
+          {/* Animated scenery layer */}
+          <img
+            src={SIMULATED_SCENES[simSceneIndex].url}
+            alt={SIMULATED_SCENES[simSceneIndex].title}
+            referrerPolicy="no-referrer"
+            style={zoomStyle}
+            className="w-full h-full object-cover blur-[0.5px] brightness-90 animate-pulse duration-10000"
+          />
+
+          {/* Warning indicator / notice */}
+          <div className="absolute top-24 left-4 right-4 z-20 mx-auto max-w-sm bg-black/60 border border-zinc-800 backdrop-blur-md rounded-2xl p-3.5 flex items-start gap-2.5 text-xs text-zinc-300">
+            <Info className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-bold text-zinc-100">Modo Câmera Simulada</p>
+              <p className="text-[11px] text-zinc-400">
+                A câmera física está bloqueada ou sem permissão. Você pode testar zoom, gravar vídeo, bater foto e enviar para o e-mail normalmente nesta simulação!
+              </p>
+              <button
+                type="button"
+                onClick={nextScene}
+                className="mt-1 flex items-center gap-1 text-[10px] text-emerald-400 hover:text-white font-bold tracking-wider uppercase transition-colors"
+              >
+                <RefreshCw className="w-3 h-3 animate-spin duration-3000" />
+                Mudar Cenario ({SIMULATED_SCENES[simSceneIndex].title})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEWPORT OVERLAY ELEMENTS (HUD) */}
+      
+      {/* Recording LED at the top */}
+      {isRecording && (
+        <div className="absolute top-24 z-20 flex items-center gap-2 bg-red-600/95 border border-red-500/30 backdrop-blur-md px-3 py-1.5 rounded-full text-[10px] font-bold text-white uppercase tracking-widest animate-pulse">
+          <span className="w-2 h-2 rounded-full bg-white block animate-ping" />
+          <span>GRAVANDO • {formatTime(recordTimer)}</span>
+        </div>
+      )}
+
+      {/* GRID FOCUS LINES (iOS classic camera layout) */}
+      <div className="absolute inset-0 pointer-events-none border border-white/5 grid grid-cols-3 grid-rows-3 z-10">
+        <div className="border-r border-b border-white/10" />
+        <div className="border-r border-b border-white/10" />
+        <div className="border-b border-white/10" />
+        <div className="border-r border-b border-white/10" />
+        <div className="border-r border-b border-white/10" />
+        <div className="border-b border-white/10" />
+        <div className="border-r border-white/10" />
+        <div className="border-r border-white/10" />
+        <div />
+      </div>
+
+      {/* OVERLAY CONTROLS PANEL (CENTER / LEFT / RIGHT SPECS) */}
+      <div className="absolute bottom-6 inset-x-0 z-30 px-6 flex flex-col items-center gap-5 pointer-events-auto">
+        
+        {/* UPPER CAPTURE SLIDERS (ZOOM & PRESETS) */}
+        <div className="w-full flex items-center justify-between">
+          
+          {/* IPHONE ZOOM SWITCHER (Bottom Left inside layout) */}
+          <div className="flex flex-col items-center gap-1.5">
+            <button
+              type="button"
+              id="zoom_iphone_btn"
+              onClick={cycleZoom}
+              title="Trocar zoom (estilo iPhone)"
+              className="w-11 h-11 rounded-full bg-zinc-950/80 border border-zinc-900 text-zinc-100 flex items-center justify-center text-xs font-bold font-mono tracking-tighter hover:bg-emerald-600 hover:border-emerald-500 active:scale-95 transition-all outline-none"
+            >
+              {zoomLevel.toFixed(1)}x
+            </button>
+            
+            {/* Quick Micro slider */}
+            <div className="flex gap-1.5 bg-black/60 px-2 py-1 rounded-full border border-white/10">
+              <button
+                type="button"
+                className={`text-[9px] font-bold cursor-pointer px-1 rounded-md transition-all ${zoomLevel === 0.5 ? 'text-emerald-400 font-extrabold scale-110' : 'text-zinc-500 hover:text-zinc-300'}`}
+                onClick={() => { playBeepSound("click"); setZoomLevel(0.5); }}
+              >
+                0.5
+              </button>
+              <button
+                type="button"
+                className={`text-[9px] font-bold cursor-pointer px-1 rounded-md transition-all ${zoomLevel === 1.0 ? 'text-emerald-400 font-extrabold scale-110' : 'text-zinc-500 hover:text-zinc-300'}`}
+                onClick={() => { playBeepSound("click"); setZoomLevel(1.0); }}
+              >
+                1.0
+              </button>
+              <button
+                type="button"
+                className={`text-[9px] font-bold cursor-pointer px-1 rounded-md transition-all ${zoomLevel === 3.0 ? 'text-emerald-400 font-extrabold scale-110' : 'text-zinc-500 hover:text-zinc-300'}`}
+                onClick={() => { playBeepSound("click"); setZoomLevel(3.0); }}
+              >
+                3.0
+              </button>
+              <button
+                type="button"
+                className={`text-[9px] font-bold cursor-pointer px-1 rounded-md transition-all ${zoomLevel === 10.0 ? 'text-emerald-400 font-extrabold scale-110' : 'text-zinc-500 hover:text-zinc-300'}`}
+                onClick={() => { playBeepSound("click"); setZoomLevel(10.0); }}
+              >
+                10
+              </button>
+              <button
+                type="button"
+                className={`text-[9px] font-bold cursor-pointer px-1 rounded-md transition-all ${zoomLevel === 15.0 ? 'text-emerald-400 font-extrabold scale-110' : 'text-zinc-500 hover:text-zinc-300'}`}
+                onClick={() => { playBeepSound("click"); setZoomLevel(15.0); }}
+              >
+                15
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Facing toggle for real camera */}
+          {deviceState === "active" && (
+            <button
+              type="button"
+              onClick={toggleFacingMode}
+              className="w-10 h-10 rounded-full bg-zinc-950/80 border border-zinc-900 text-zinc-300 flex items-center justify-center hover:bg-zinc-800 active:scale-90 transition-all outline-none"
+              title="Girar câmera"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* BOTTOMMOST TRIGGER AND MODE CONTROLS */}
+        <div className="w-full grid grid-cols-3 items-center">
+          
+          {/* Left spacer / layout balance */}
+          <div className="flex justify-start">
+            {deviceState === "denied" && (
+              <button
+                type="button"
+                onClick={initCamera}
+                title="Tentar acionar camera real"
+                className="flex items-center gap-1.5 bg-zinc-900/90 hover:bg-emerald-900/40 border border-zinc-800 px-3 py-1.5 rounded-full text-[9px] text-zinc-400 hover:text-emerald-400 font-bold uppercase transition-all"
+              >
+                <Camera className="w-3.5 h-3.5 rotate-12" />
+                <span>Reativar</span>
+              </button>
+            )}
+          </div>
+
+          {/* CENTER CAPTURE TRIGGER (Tirar foto / Gravar) */}
+          <div className="flex justify-center">
+            <button
+              type="button"
+              id="camera_shutter_trigger"
+              onClick={handleCaptureTrigger}
+              disabled={isSending}
+              className="group relative flex items-center justify-center rounded-full outline-none select-none transition-transform active:scale-90 focus:ring-4 focus:ring-emerald-500/20"
+            >
+              {/* Outer metal bezel */}
+              <div className="w-18 h-18 rounded-full border-[3px] border-white flex items-center justify-center bg-transparent transition-colors group-hover:border-zinc-300">
+                {/* Inner button based on mode and recording status */}
+                {cameraMode === "foto" ? (
+                  /* Photo trigger: solid filled white */
+                  <div className="w-14 h-14 rounded-full bg-white transition-all group-hover:scale-95 group-active:scale-90" />
+                ) : (
+                  /* Video trigger: solid red record circle / square */
+                  isRecording ? (
+                    /* Square showing running node */
+                    <div className="w-8 h-8 rounded-md bg-red-600 animate-pulse transition-all" />
+                  ) : (
+                    /* Red action trigger */
+                    <div className="w-14 h-14 rounded-full bg-red-600 transition-all group-hover:scale-95 group-active:scale-105" />
+                  )
+                )}
+              </div>
+            </button>
+          </div>
+
+          {/* RIGHT TOGGLE (FOTO/VIDEO Selector) */}
+          <div className="flex justify-end">
+            <div className="bg-zinc-950/80 border border-zinc-900 rounded-full p-1 flex items-center gap-1 shadow-md">
+              <button
+                type="button"
+                id="mode_foto_btn"
+                onClick={() => {
+                  playBeepSound("click");
+                  setCameraMode("foto");
+                }}
+                disabled={isRecording}
+                className={`px-3 py-1.5 rounded-full text-[10px] font-bold tracking-widest uppercase transition-all ${
+                  cameraMode === "foto"
+                    ? "bg-white text-zinc-950 scale-100"
+                    : "text-zinc-500 hover:text-zinc-200"
+                }`}
+              >
+                FOTO
+              </button>
+              <button
+                type="button"
+                id="mode_video_btn"
+                onClick={() => {
+                  playBeepSound("click");
+                  setCameraMode("video");
+                }}
+                disabled={isRecording}
+                className={`px-3 py-1.5 rounded-full text-[10px] font-bold tracking-widest uppercase transition-all ${
+                  cameraMode === "video"
+                    ? "bg-red-600 text-white scale-100"
+                    : "text-zinc-500 hover:text-zinc-200"
+                }`}
+              >
+                VIDEO
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  );
+}

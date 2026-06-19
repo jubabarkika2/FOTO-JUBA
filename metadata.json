@@ -1,0 +1,6 @@
+{
+  "name": "JUBA FOTO",
+  "description": "Aplicativo de captura de fotos e vídeos para envio direto por e-mail",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
