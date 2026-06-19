@@ -30,6 +30,7 @@ export default function SmtpSettings({
   const [secure, setSecure] = useState(smtpConfig.secure);
   const [showHelp, setShowHelp] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [toastFeedback, setToastFeedback] = useState<string | null>(null);
 
   // Sync with current props
   useEffect(() => {
@@ -76,7 +77,6 @@ export default function SmtpSettings({
     showToastFeedback("Preenchido smtp.gmail.com e porta SSL 465!");
   };
 
-  const [toastFeedback, setToastFeedback] = useState<string | null>(null);
   const showToastFeedback = (msg: string) => {
     setToastFeedback(msg);
     setTimeout(() => setToastFeedback(null), 3000);
