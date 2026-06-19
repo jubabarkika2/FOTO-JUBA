@@ -10,6 +10,7 @@ interface SmtpSettingsProps {
   onSaveEmail: (email: string) => void;
   smtpConfig: SmtpConfig;
   onSaveSmtp: (config: SmtpConfig) => void;
+  onResetAll?: () => void;
 }
 
 export default function SmtpSettings({
@@ -19,6 +20,7 @@ export default function SmtpSettings({
   onSaveEmail,
   smtpConfig,
   onSaveSmtp,
+  onResetAll,
 }: SmtpSettingsProps) {
   const [destEmail, setDestEmail] = useState(savedEmail);
   const [host, setHost] = useState(smtpConfig.host);
@@ -59,11 +61,11 @@ export default function SmtpSettings({
       secure: secure,
     });
 
-    setSaveStatus("Configurações salvas com sucesso!");
+    setSaveStatus("Configurações salvas!");
     setTimeout(() => {
       setSaveStatus(null);
       onClose();
-    }, 1500);
+    }, 1200);
   };
 
   const loadGmailPresets = () => {
@@ -71,6 +73,23 @@ export default function SmtpSettings({
     setHost("smtp.gmail.com");
     setPort("465");
     setSecure(true);
+    showToastFeedback("Preenchido smtp.gmail.com e porta SSL 465!");
+  };
+
+  const [toastFeedback, setToastFeedback] = useState<string | null>(null);
+  const showToastFeedback = (msg: string) => {
+    setToastFeedback(msg);
+    setTimeout(() => setToastFeedback(null), 3000);
+  };
+
+  const handleResetClick = () => {
+    playBeepSound("error");
+    if (confirm("Tem certeza que deseja limpar todas as configurações salvas (e-mail destinatário, credenciais de SMTP e histórico) para recomeçar o processo do zero?")) {
+      if (onResetAll) {
+        onResetAll();
+        onClose();
+      }
+    }
   };
 
   return (
@@ -80,10 +99,10 @@ export default function SmtpSettings({
         className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-zinc-800">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-zinc-850">
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-emerald-500" />
-            <h2 className="text-lg font-bold text-zinc-100 uppercase tracking-wider">Configurações</h2>
+            <h2 className="text-sm font-bold text-zinc-100 uppercase tracking-widest">Guia de Aprendizado & Configurações</h2>
           </div>
           <button 
             type="button"
@@ -91,10 +110,51 @@ export default function SmtpSettings({
               playBeepSound("click");
               onClose();
             }}
-            className="p-1 rounded-full text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+            className="p-1 rounded-full text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
+        </div>
+
+        {/* STEP-BY-STEP FLOW TRACKER */}
+        <div className="px-6 py-4 bg-zinc-950/70 border-b border-zinc-900/50 flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black tracking-wider uppercase text-emerald-500">Mapeamento do Fluxo (Sua Jornada)</span>
+            {toastFeedback && (
+              <span className="text-[10px] text-zinc-400 font-medium animate-pulse">{toastFeedback}</span>
+            )}
+          </div>
+          
+          <div className="grid grid-cols-3 gap-2 text-center">
+            {/* Step 1 */}
+            <div className={`p-2 rounded-xl border flex flex-col justify-between items-center transition-all ${
+              destEmail.trim() ? "bg-emerald-950/30 border-emerald-900/80" : "bg-zinc-900/30 border-zinc-800/80"
+            }`}>
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold mb-1 ${
+                destEmail.trim() ? "bg-emerald-500 text-zinc-950" : "bg-zinc-800 text-zinc-400"
+              }`}>1</span>
+              <span className="text-[9px] font-black uppercase text-zinc-200 tracking-wider">Destinatário</span>
+              <span className="text-[8px] text-zinc-500 mt-0.5 select-none font-medium">Define quem recebe</span>
+            </div>
+
+            {/* Step 2 */}
+            <div className={`p-2 rounded-xl border flex flex-col justify-between items-center transition-all ${
+              host.trim() && user.trim() ? "bg-emerald-950/30 border-emerald-900/80" : "bg-zinc-900/30 border-zinc-800/80"
+            }`}>
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold mb-1 ${
+                host.trim() && user.trim() ? "bg-emerald-500 text-zinc-950" : "bg-zinc-800 text-zinc-400"
+              }`}>2</span>
+              <span className="text-[9px] font-black uppercase text-zinc-200 tracking-wider">SMTP (Real)</span>
+              <span className="text-[8px] text-zinc-500 mt-0.5 select-none font-medium">Opcional / Simulador</span>
+            </div>
+
+            {/* Step 3 */}
+            <div className="p-2 rounded-xl border bg-zinc-900/20 border-zinc-850/80 flex flex-col justify-between items-center select-none">
+              <span className="w-5 h-5 rounded-full bg-zinc-800 text-zinc-400 flex items-center justify-center text-[10px] font-extrabold mb-1">3</span>
+              <span className="text-[9px] font-black uppercase text-zinc-300 tracking-wider">Tirar & Enviar</span>
+              <span className="text-[8px] text-zinc-500 mt-0.5 select-none font-medium">Disparar Câmera</span>
+            </div>
+          </div>
         </div>
 
         {/* Content */}
@@ -233,15 +293,20 @@ export default function SmtpSettings({
         </form>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-zinc-950/50 border-t border-zinc-800/80 flex items-center justify-between">
-          <span className="text-[10px] text-zinc-600">
-            {host && user ? "Configuração de SMTP ativa" : "Modo Simulador ativo"}
-          </span>
+        <div className="px-6 py-4 bg-zinc-950/50 border-t border-zinc-800/80 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={handleResetClick}
+            className="text-[10px] text-red-400 hover:text-red-300 hover:bg-red-950/20 px-3 py-2 rounded-xl transition-all font-bold uppercase tracking-widest border border-red-900/30 cursor-pointer"
+            title="Limpar e recomeçar tudo a partir do zero"
+          >
+            Zerar Tudo
+          </button>
           <button
             type="button"
             onClick={handleSave}
             disabled={!!saveStatus}
-            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 disabled:opacity-50 text-white rounded-xl px-5 py-2 text-xs font-bold tracking-wider uppercase transition-all shadow-md cursor-pointer"
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 disabled:opacity-50 text-white rounded-xl px-5 py-2 text-xs font-bold tracking-wider uppercase transition-all shadow-lg cursor-pointer ml-auto"
           >
             {saveStatus ? "Salvo ✔" : (
               <>

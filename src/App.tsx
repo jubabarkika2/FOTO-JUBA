@@ -220,6 +220,29 @@ export default function App() {
     }
   };
 
+  const handleResetAll = async () => {
+    // Clear all configuration settings from storage
+    localStorage.removeItem("juba_dest_email");
+    localStorage.removeItem("juba_smtp_config");
+    
+    // Reset state to default values to start steps fresh from scratch
+    setSavedEmail("jubabarkika2@gmail.com");
+    setSmtpConfig({ host: "", port: "587", user: "", pass: "", secure: false });
+    setActiveCapture(null);
+    setOutboxEmails([]);
+    
+    try {
+      // Clear history from server-side memory
+      await fetch("/api/emails/clear", { method: "POST" });
+    } catch (e) {
+      console.warn("Could not clear central server history:", e);
+    }
+    
+    showToast("Aplicações e SMTP resetados! Vamos iniciar do zero.", "success");
+    // Show settings so they immediately see step 1 & step 2
+    setShowSettings(true);
+  };
+
   return (
     <div className="relative w-screen h-screen bg-zinc-950 overflow-hidden text-zinc-100 flex flex-col font-sans">
       
@@ -479,6 +502,7 @@ export default function App() {
         onSaveEmail={handleSaveEmail}
         smtpConfig={smtpConfig}
         onSaveSmtp={handleSaveSmtp}
+        onResetAll={handleResetAll}
       />
 
       <OutboxHistory
