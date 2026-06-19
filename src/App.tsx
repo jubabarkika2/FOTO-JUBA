@@ -20,15 +20,39 @@ import OutboxHistory from "./components/OutboxHistory";
 import { ActiveCapture, EmailHistoryItem, SmtpConfig } from "./types";
 import { playBeepSound } from "./utils/audio";
 
+// Safe memory and local storage fallback helper to support strict mobile sandboxes / Safari / iOS browsers
+const memoryLocalStorageBackup: Record<string, string> = {
+  juba_dest_email: "jubabarkika2@gmail.com",
+};
+
+const safeStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      return localStorage.getItem(key);
+    } catch (e) {
+      console.warn(`[SafeStorage] Failed to read ${key} from localStorage, using memory fallback:`, e);
+      return memoryLocalStorageBackup[key] || null;
+    }
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      console.warn(`[SafeStorage] Failed to save ${key} to localStorage, using memory fallback:`, e);
+      memoryLocalStorageBackup[key] = value;
+    }
+  }
+};
+
 export default function App() {
-  // Load initial settings
+  // Load initial settings with safe fallback storage
   const [savedEmail, setSavedEmail] = useState<string>(() => {
-    return localStorage.getItem("juba_dest_email") || "jubabarkika2@gmail.com";
+    return safeStorage.getItem("juba_dest_email") || "jubabarkika2@gmail.com";
   });
 
   const [smtpConfig, setSmtpConfig] = useState<SmtpConfig>(() => {
     try {
-      const stored = localStorage.getItem("juba_smtp_config");
+      const stored = safeStorage.getItem("juba_smtp_config");
       if (stored) return JSON.parse(stored);
     } catch (e) {}
     return { host: "", port: "587", user: "", pass: "", secure: false };
@@ -46,17 +70,24 @@ export default function App() {
   const [isSending, setIsSending] = useState(false);
   const [isLoadingOutbox, setIsLoadingOutbox] = useState(false);
   const [isIframe, setIsIframe] = useState(false);
+  const [showDirectLinkBanner, setShowDirectLinkBanner] = useState(false);
 
   // Toast Notifications
   const [toast, setToast] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Safely detect if running inside an iframe
+  // Safely detect if running inside an iframe or mobile cellular device
   useEffect(() => {
     try {
-      setIsIframe(window.self !== window.top);
+      const isInside = window.self !== window.top;
+      setIsIframe(isInside);
+      
+      const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      // Show the header banner if we are either inside an iframe or using a mobile device
+      setShowDirectLinkBanner(isInside || isMobileDevice);
     } catch (e) {
       setIsIframe(true);
+      setShowDirectLinkBanner(true);
     }
   }, []);
 
@@ -99,13 +130,13 @@ export default function App() {
 
   const handleSaveEmail = (email: string) => {
     setSavedEmail(email);
-    localStorage.setItem("juba_dest_email", email);
+    safeStorage.setItem("juba_dest_email", email);
     showToast(`E-mail de destino atualizado: ${email}`, "success");
   };
 
   const handleSaveSmtp = (config: SmtpConfig) => {
     setSmtpConfig(config);
-    localStorage.setItem("juba_smtp_config", JSON.stringify(config));
+    safeStorage.setItem("juba_smtp_config", JSON.stringify(config));
   };
 
   // Capture callback
@@ -414,6 +445,18 @@ export default function App() {
             >
               <Settings className="w-4 h-4" />
             </button>
+
+            {/* Direct Open in New Tab Button for Mobile devices & Safari browser compatibility */}
+            <a
+              href={window.location.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Abrir em Nova Aba"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[10px] font-black uppercase text-amber-400 bg-amber-400/10 border border-amber-400/20 hover:bg-amber-400 hover:text-zinc-950 transition-all cursor-pointer active:scale-95"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Nova Guia ↗</span>
+            </a>
           </div>
 
         </div>
@@ -422,19 +465,34 @@ export default function App() {
       {/* MAIN VIEWPORT CAMERA AREA (Janela de camera inteira) */}
       <main className="flex-1 w-full relative z-10 pt-18 flex flex-col">
         
-        {isIframe && (
-          <div className="w-full bg-amber-500 text-zinc-950 font-black text-center py-2 px-4 text-[11px] select-none border-b border-zinc-800 flex flex-col sm:flex-row items-center justify-center gap-2 shadow-md relative z-20 shrink-0 leading-tight">
-            <span className="flex items-center gap-1">
-              ⚠️ MODO RESTRITO (O celular bloqueia câmera dentro desta janela)
-            </span>
-            <a 
-              href={window.location.href} 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 text-white font-extrabold px-3.5 py-1 rounded-full uppercase transition-all flex items-center gap-1 active:scale-95 text-[10px]"
+        {showDirectLinkBanner && (
+          <div className="w-full bg-amber-500 text-zinc-950 font-black text-center py-2.5 px-4 text-[11px] select-none border-b border-zinc-800 flex items-center justify-between gap-3 shadow-md relative z-20 shrink-0 leading-tight">
+            <div className="flex-1 flex flex-col sm:flex-row items-center justify-center gap-2">
+              <span className="flex items-center gap-1 text-[11px]">
+                ⚠️ MODO RESTRITO (O celular precisa de Nova Guia para liberar câmera física)
+              </span>
+              <a 
+                href={window.location.href} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 text-white font-extrabold px-3 py-1.5 rounded-full uppercase transition-all flex items-center gap-1 active:scale-95 text-[10px] shadow"
+              >
+                Abrir em Nova Guia ↗
+              </a>
+            </div>
+            
+            {/* Close button to clear interface constraint */}
+            <button
+              type="button"
+              onClick={() => {
+                playBeepSound("click");
+                setShowDirectLinkBanner(false);
+              }}
+              className="p-1 rounded-full text-zinc-900 hover:bg-zinc-950/10 transition-colors"
+              title="Fechar aviso"
             >
-              Toque aqui para abrir no navegador do celular (Nova Guia) ↗
-            </a>
+              <X className="w-4 h-4 stroke-[3]" />
+            </button>
           </div>
         )}
 
