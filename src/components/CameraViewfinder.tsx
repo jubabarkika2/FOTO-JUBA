@@ -700,47 +700,6 @@ export default function CameraViewfinder({
             style={zoomStyle}
             className="w-full h-full object-cover blur-[0.5px] brightness-90 animate-pulse duration-10000"
           />
-
-          {/* Warning indicator / notice */}
-          <div className="absolute top-24 left-4 right-4 z-20 mx-auto max-w-sm bg-black/85 border border-zinc-800 backdrop-blur-md rounded-2xl p-4 flex flex-col gap-3 text-xs text-zinc-300 shadow-2xl">
-            <div className="flex items-start gap-2.5">
-              <Info className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <p className="font-bold text-zinc-100 flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Modo Simulador Inteligente
-                </p>
-                <p className="text-[11px] text-zinc-400 leading-normal">
-                  A câmera física está desativada no iframe. <strong>Para usar a sua câmera real (Webcam / Aparelho)</strong>, você precisa abrir o app em uma <strong>Nova Guia</strong>!
-                </p>
-                <p className="text-[10px] text-zinc-500 leading-normal pt-1 bg-zinc-950 p-2 rounded-lg border border-zinc-900">
-                  💡 Clique no ícone de <strong>seta diagonal saindo da caixa (Abrir em nova aba)</strong> no topo superior direito da tela do AI Studio!
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-center justify-between gap-2 border-t border-zinc-900 pt-2.5">
-              <button
-                type="button"
-                onClick={nextScene}
-                className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-white font-black tracking-wider uppercase transition-colors"
-                title="Mudar cenário simulado para testar"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                Trocar Cenário ({SIMULATED_SCENES[simSceneIndex].title})
-              </button>
-              
-              <a
-                href={window.location.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-[10px] bg-emerald-600 border border-emerald-500 text-white hover:bg-emerald-500 px-3 py-1.5 rounded-lg font-black uppercase transition-all shadow-md active:scale-95"
-                title="Abrir em Nova Aba"
-              >
-                <span>Nova Aba ↗</span>
-              </a>
-            </div>
-          </div>
         </div>
       )}
 

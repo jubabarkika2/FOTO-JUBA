@@ -69,27 +69,10 @@ export default function App() {
   const [outboxEmails, setOutboxEmails] = useState<EmailHistoryItem[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [isLoadingOutbox, setIsLoadingOutbox] = useState(false);
-  const [isIframe, setIsIframe] = useState(false);
-  const [showDirectLinkBanner, setShowDirectLinkBanner] = useState(false);
 
   // Toast Notifications
   const [toast, setToast] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Safely detect if running inside an iframe or mobile cellular device
-  useEffect(() => {
-    try {
-      const isInside = window.self !== window.top;
-      setIsIframe(isInside);
-      
-      const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      // Show the header banner if we are either inside an iframe or using a mobile device
-      setShowDirectLinkBanner(isInside || isMobileDevice);
-    } catch (e) {
-      setIsIframe(true);
-      setShowDirectLinkBanner(true);
-    }
-  }, []);
 
   // Sync on startup
   useEffect(() => {
@@ -445,18 +428,6 @@ export default function App() {
             >
               <Settings className="w-4 h-4" />
             </button>
-
-            {/* Direct Open in New Tab Button for Mobile devices & Safari browser compatibility */}
-            <a
-              href={window.location.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Abrir em Nova Aba"
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[10px] font-black uppercase text-amber-400 bg-amber-400/10 border border-amber-400/20 hover:bg-amber-400 hover:text-zinc-950 transition-all cursor-pointer active:scale-95"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              <span>Nova Guia ↗</span>
-            </a>
           </div>
 
         </div>
@@ -464,37 +435,6 @@ export default function App() {
 
       {/* MAIN VIEWPORT CAMERA AREA (Janela de camera inteira) */}
       <main className="flex-1 w-full relative z-10 pt-18 flex flex-col">
-        
-        {showDirectLinkBanner && (
-          <div className="w-full bg-amber-500 text-zinc-950 font-black text-center py-2.5 px-4 text-[11px] select-none border-b border-zinc-800 flex items-center justify-between gap-3 shadow-md relative z-20 shrink-0 leading-tight">
-            <div className="flex-1 flex flex-col sm:flex-row items-center justify-center gap-2">
-              <span className="flex items-center gap-1 text-[11px]">
-                ⚠️ MODO RESTRITO (O celular precisa de Nova Guia para liberar câmera física)
-              </span>
-              <a 
-                href={window.location.href} 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 text-white font-extrabold px-3 py-1.5 rounded-full uppercase transition-all flex items-center gap-1 active:scale-95 text-[10px] shadow"
-              >
-                Abrir em Nova Guia ↗
-              </a>
-            </div>
-            
-            {/* Close button to clear interface constraint */}
-            <button
-              type="button"
-              onClick={() => {
-                playBeepSound("click");
-                setShowDirectLinkBanner(false);
-              }}
-              className="p-1 rounded-full text-zinc-900 hover:bg-zinc-950/10 transition-colors"
-              title="Fechar aviso"
-            >
-              <X className="w-4 h-4 stroke-[3]" />
-            </button>
-          </div>
-        )}
 
         {/* Full Screen Viewfinder layer */}
         <CameraViewfinder
