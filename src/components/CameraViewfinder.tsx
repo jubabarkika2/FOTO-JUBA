@@ -43,6 +43,7 @@ export default function CameraViewfinder({
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
+  const currentStreamRef = useRef<MediaStream | null>(null);
 
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [deviceState, setDeviceState] = useState<"loading" | "active" | "denied" | "unsupported">("loading");
@@ -64,6 +65,22 @@ export default function CameraViewfinder({
     };
   }, [activeFacingMode]);
 
+  // Safely synchronize active stream to video element
+  useEffect(() => {
+    if (videoRef.current) {
+      if (stream) {
+        if (videoRef.current.srcObject !== stream) {
+          videoRef.current.srcObject = stream;
+        }
+        videoRef.current.play().catch((playErr) => {
+          console.warn("Auto playing synced stream failed or was blocked:", playErr);
+        });
+      } else {
+        videoRef.current.srcObject = null;
+      }
+    }
+  }, [stream, deviceState]);
+
   // Handle timer
   useEffect(() => {
     if (isRecording) {
@@ -83,28 +100,88 @@ export default function CameraViewfinder({
 
   const initCamera = async () => {
     setDeviceState("loading");
+    
+    // Stop and clear previous streams synchronously
     stopCamera();
+    
+    // Crucial 250ms sleep to allow the camera hardware and OS to release handles before requesting again
+    await new Promise((resolve) => setTimeout(resolve, 250));
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error("WebRTC ou getUserMedia não é suportado neste navegador.");
       }
 
-      // Standard requested constraints
-      const constraints = {
-        video: {
-          facingMode: activeFacingMode,
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: true, // required for video audio
-      };
+      let mediaStream: MediaStream | null = null;
+      let errorAccumulator: any = null;
 
-      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      // Robust progressive attempt ladder for maximum device compatibility!
+      
+      // Attempt 1: Standard HD Video with target facingMode, audio: false (faster permission & less intrusive)
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: activeFacingMode === "user" ? "user" : "environment",
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
+      } catch (err) {
+        console.warn("Attempt 1 (HD facingMode) failed, trying Attempt 2...", err);
+        errorAccumulator = err;
+      }
+
+      // Attempt 2: Standard Video with target facingMode, no size constraints (crucial for lower resolution front cameras)
+      if (!mediaStream) {
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: activeFacingMode === "user" ? "user" : "environment",
+            },
+            audio: false,
+          });
+        } catch (err) {
+          console.warn("Attempt 2 (Generic facingMode) failed, trying Attempt 3...", err);
+          errorAccumulator = err;
+        }
+      }
+
+      // Attempt 3: Pure video fallback (any camera)
+      if (!mediaStream) {
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        } catch (err) {
+          console.warn("Attempt 3 (Pure video) failed:", err);
+          errorAccumulator = err;
+        }
+      }
+
+      if (!mediaStream) {
+        throw errorAccumulator || new Error("Não foi possível acessar nenhum dispositivo de imagem.");
+      }
+
       setStream(mediaStream);
+      currentStreamRef.current = mediaStream;
+      
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        
+        // Explicitly trigger playing when loaded to handle strict mobile browser policies (prevent black screen)
+        videoRef.current.onloadedmetadata = () => {
+          if (videoRef.current) {
+            videoRef.current.play().catch((playErr) => {
+              console.warn("Autoplay was prevented by browser policy, waiting for user click:", playErr);
+            });
+          }
+        };
+        // Also call play immediately
+        videoRef.current.play().catch(() => {});
       }
+      
       setDeviceState("active");
     } catch (error: any) {
       console.warn("Nenhuma câmera física atribuída ou permissão negada. Ativando simulador.", error);
@@ -113,9 +190,32 @@ export default function CameraViewfinder({
   };
 
   const stopCamera = () => {
+    // Stop the ref stream synchronously
+    if (currentStreamRef.current) {
+      currentStreamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch (e) {
+          console.warn("Error stopping track:", e);
+        }
+      });
+      currentStreamRef.current = null;
+    }
+    
+    // Stop hook state stream if reference holds any
     if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
+      stream.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch (e) {
+          console.warn("Error stopping active track state:", e);
+        }
+      });
+    }
+    setStream(null);
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
   };
 
@@ -360,7 +460,7 @@ export default function CameraViewfinder({
 
   // Active styles for camera Zooming
   const zoomStyle = {
-    transform: `scale(${zoomLevel})`,
+    transform: `scale(${zoomLevel}) ${activeFacingMode === "user" ? "scaleX(-1)" : ""}`,
     transition: "transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
     transformOrigin: "center center",
   };
@@ -376,18 +476,17 @@ export default function CameraViewfinder({
       />
 
       {/* RENDER ACTIVE STREAM */}
-      {deviceState === "active" ? (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          style={zoomStyle}
-          className={`w-full h-full object-cover select-none ${
-            activeFacingMode === "user" ? "-scale-x-100" : ""
-          }`}
-        />
-      ) : (
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        style={zoomStyle}
+        className={`w-full h-full object-cover select-none transition-opacity duration-300 ${
+          deviceState === "active" ? "opacity-100" : "opacity-0 pointer-events-none absolute"
+        }`}
+      />
+      {deviceState !== "active" && (
         /* SIMULATION VIEWFINDER */
         <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
           {/* Animated scenery layer */}
@@ -400,20 +499,43 @@ export default function CameraViewfinder({
           />
 
           {/* Warning indicator / notice */}
-          <div className="absolute top-24 left-4 right-4 z-20 mx-auto max-w-sm bg-black/60 border border-zinc-800 backdrop-blur-md rounded-2xl p-3.5 flex items-start gap-2.5 text-xs text-zinc-300">
-            <Info className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="font-bold text-zinc-100">Modo Câmera Simulada</p>
-              <p className="text-[11px] text-zinc-400">
-                A câmera física está bloqueada ou sem permissão. Você pode testar zoom, gravar vídeo, bater foto e enviar para o e-mail normalmente nesta simulação!
-              </p>
+          <div className="absolute top-24 left-4 right-4 z-20 mx-auto max-w-sm bg-black/85 border border-zinc-800 backdrop-blur-md rounded-2xl p-4 flex flex-col gap-3 text-xs text-zinc-300 shadow-2xl">
+            <div className="flex items-start gap-2.5">
+              <Info className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-bold text-zinc-100 flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Modo Simulador Inteligente
+                </p>
+                <p className="text-[11px] text-zinc-400 leading-normal">
+                  A câmera física está desativada no iframe. <strong>Para usar a sua câmera real (Webcam / Aparelho)</strong>, você precisa abrir o app em uma <strong>Nova Guia</strong>!
+                </p>
+                <p className="text-[10px] text-zinc-500 leading-normal pt-1 bg-zinc-950 p-2 rounded-lg border border-zinc-900">
+                  💡 Clique no ícone de <strong>seta diagonal saindo da caixa (Abrir em nova aba)</strong> no topo superior direito da tela do AI Studio!
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center justify-between gap-2 border-t border-zinc-900 pt-2.5">
               <button
                 type="button"
                 onClick={nextScene}
-                className="mt-1 flex items-center gap-1 text-[10px] text-emerald-400 hover:text-white font-bold tracking-wider uppercase transition-colors"
+                className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-white font-black tracking-wider uppercase transition-colors"
+                title="Mudar cenário simulado para testar"
               >
-                <RefreshCw className="w-3 h-3 animate-spin duration-3000" />
-                Mudar Cenario ({SIMULATED_SCENES[simSceneIndex].title})
+                <RefreshCw className="w-3.5 h-3.5" />
+                Trocar Cenário ({SIMULATED_SCENES[simSceneIndex].title})
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => {
+                  window.open(window.location.href, "_blank");
+                }}
+                className="flex items-center gap-1 text-[9px] bg-emerald-600/25 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600 hover:text-white px-2 py-1 rounded-md font-bold uppercase transition-all"
+                title="Abrir em Nova Aba"
+              >
+                <span>Nova Aba ↗</span>
               </button>
             </div>
           </div>

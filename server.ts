@@ -79,21 +79,70 @@ app.post("/api/send-email", async (req, res) => {
     }
   }
 
-  // If smtp settings are present, attempt a REAL send using nodemailer
-  if (smtp && smtp.host && smtp.user && smtp.pass) {
+  // Fallback to process.env variables if SMTP values are not sent from the request
+  let rawHost = (smtp?.host || process.env.SMTP_HOST || "").trim();
+  let rawPort = (smtp?.port || process.env.SMTP_PORT || "587").trim();
+  let rawUser = (smtp?.user || process.env.SMTP_USER || "").trim();
+  let rawPass = smtp?.pass || process.env.SMTP_PASS || "";
+
+  // Highly robust sanitization for Gmail App Passwords
+  // Google shows app passwords as "abcd efgh ijkl mnop", users copy paste with spaces, which breaks standard login
+  if (rawHost.toLowerCase().includes("gmail") || rawUser.toLowerCase().includes("gmail")) {
+    rawPass = rawPass.replace(/\s+/g, ""); // Strip all spaces from 16-character google app password
+  } else {
+    rawPass = rawPass.trim();
+  }
+
+  const activeSmtp = {
+    host: rawHost,
+    port: rawPort,
+    user: rawUser,
+    pass: rawPass,
+    secure: smtp?.secure !== undefined ? smtp.secure : (process.env.SMTP_SECURE === "true" || rawPort === "465"),
+  };
+
+  // If smtp settings are present (from request or env), attempt a REAL send using nodemailer
+  if (activeSmtp.host && activeSmtp.user && activeSmtp.pass) {
     try {
-      const transporter = nodemailer.createTransport({
-        host: smtp.host,
-        port: parseInt(smtp.port || "587"),
-        secure: smtp.secure || false, // true for 465, false for other ports
-        auth: {
-          user: smtp.user,
-          pass: smtp.pass,
-        },
-      });
+      console.log(`[SMTP REAL] Conectando ao host: ${activeSmtp.host}:${activeSmtp.port} (SSL/TLS: ${activeSmtp.secure}) como: ${activeSmtp.user}`);
+      let transportConfig: any;
+
+      // Gmail optimized built-in preset to bypass container port blocks and greeting handshaking timeouts!
+      if (activeSmtp.host.toLowerCase().includes("gmail") || activeSmtp.user.toLowerCase().includes("gmail")) {
+        console.log(`[SMTP REAL] Provável e-mail ou host Gmail detectado (${activeSmtp.user}). Usando provedor "gmail" otimizado.`);
+        transportConfig = {
+          service: "gmail",
+          auth: {
+            user: activeSmtp.user,
+            pass: activeSmtp.pass,
+          },
+          tls: {
+            rejectUnauthorized: false
+          }
+        };
+      } else {
+        transportConfig = {
+          host: activeSmtp.host,
+          port: parseInt(activeSmtp.port, 10) || 587,
+          secure: activeSmtp.secure, // true for 465, false for other ports
+          auth: {
+            user: activeSmtp.user,
+            pass: activeSmtp.pass,
+          },
+          connectionTimeout: 15000, // 15 seconds connection timeout
+          greetingTimeout: 12000,   // More generous handshake greeting timeout
+          socketTimeout: 20000,
+          tls: {
+            rejectUnauthorized: false // Ignore self-signed certificate errors to maximize ease of deployment
+          }
+        };
+      }
+
+      console.log(`[SMTP REAL] Inicializando transporter Nodemailer...`);
+      const transporter = nodemailer.createTransport(transportConfig);
 
       const mailOptions: any = {
-        from: smtp.user,
+        from: activeSmtp.user,
         to: to,
         subject: subject || "JUBA FOTO - Captura",
         text: message || "Enviado usando JUBA FOTO.",
