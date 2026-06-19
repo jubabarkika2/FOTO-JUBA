@@ -730,16 +730,15 @@ export default function CameraViewfinder({
                 Trocar Cenário ({SIMULATED_SCENES[simSceneIndex].title})
               </button>
               
-              <button
-                type="button"
-                onClick={() => {
-                  window.open(window.location.href, "_blank");
-                }}
-                className="flex items-center gap-1 text-[9px] bg-emerald-600/25 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600 hover:text-white px-2 py-1 rounded-md font-bold uppercase transition-all"
+              <a
+                href={window.location.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-[10px] bg-emerald-600 border border-emerald-500 text-white hover:bg-emerald-500 px-3 py-1.5 rounded-lg font-black uppercase transition-all shadow-md active:scale-95"
                 title="Abrir em Nova Aba"
               >
                 <span>Nova Aba ↗</span>
-              </button>
+              </a>
             </div>
           </div>
         </div>

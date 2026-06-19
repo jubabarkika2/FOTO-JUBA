@@ -45,10 +45,20 @@ export default function App() {
   const [outboxEmails, setOutboxEmails] = useState<EmailHistoryItem[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [isLoadingOutbox, setIsLoadingOutbox] = useState(false);
+  const [isIframe, setIsIframe] = useState(false);
 
   // Toast Notifications
   const [toast, setToast] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Safely detect if running inside an iframe
+  useEffect(() => {
+    try {
+      setIsIframe(window.self !== window.top);
+    } catch (e) {
+      setIsIframe(true);
+    }
+  }, []);
 
   // Sync on startup
   useEffect(() => {
@@ -75,7 +85,7 @@ export default function App() {
   const fetchOutbox = async () => {
     setIsLoadingOutbox(true);
     try {
-      const res = await fetch(`${window.location.origin}/api/emails`);
+      const res = await fetch("/api/emails");
       if (res.ok) {
         const data = await res.json();
         setOutboxEmails(data.emails || []);
@@ -249,7 +259,7 @@ export default function App() {
         smtp: smtpConfig.host ? smtpConfig : undefined, // pass SMTP parameters if filled
       };
 
-      const res = await fetch(`${window.location.origin}/api/send-email`, {
+      const res = await fetch("/api/send-email", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -285,7 +295,7 @@ export default function App() {
 
   const handleClearHistory = async () => {
     try {
-      const res = await fetch(`${window.location.origin}/api/emails/clear`, { method: "POST" });
+      const res = await fetch("/api/emails/clear", { method: "POST" });
       if (res.ok) {
         showToast("Histórico de envios limpo.", "success");
         fetchOutbox();
@@ -410,8 +420,24 @@ export default function App() {
       </header>
 
       {/* MAIN VIEWPORT CAMERA AREA (Janela de camera inteira) */}
-      <main className="flex-1 w-full relative z-10 pt-18">
+      <main className="flex-1 w-full relative z-10 pt-18 flex flex-col">
         
+        {isIframe && (
+          <div className="w-full bg-amber-500 text-zinc-950 font-black text-center py-2 px-4 text-[11px] select-none border-b border-zinc-800 flex flex-col sm:flex-row items-center justify-center gap-2 shadow-md relative z-20 shrink-0 leading-tight">
+            <span className="flex items-center gap-1">
+              ⚠️ MODO RESTRITO (O celular bloqueia câmera dentro desta janela)
+            </span>
+            <a 
+              href={window.location.href} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 text-white font-extrabold px-3.5 py-1 rounded-full uppercase transition-all flex items-center gap-1 active:scale-95 text-[10px]"
+            >
+              Toque aqui para abrir no navegador do celular (Nova Guia) ↗
+            </a>
+          </div>
+        )}
+
         {/* Full Screen Viewfinder layer */}
         <CameraViewfinder
           cameraMode={cameraMode}
