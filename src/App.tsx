@@ -75,7 +75,7 @@ export default function App() {
   const fetchOutbox = async () => {
     setIsLoadingOutbox(true);
     try {
-      const res = await fetch("/api/emails");
+      const res = await fetch(`${window.location.origin}/api/emails`);
       if (res.ok) {
         const data = await res.json();
         setOutboxEmails(data.emails || []);
@@ -123,21 +123,90 @@ export default function App() {
       return;
     }
 
+    // Limit video attachments to 20MB to prevent browser/network overflows
+    if (file.type.startsWith("video/") && file.size > 20 * 1024 * 1024) {
+      showToast("O vídeo é muito grande. O limite para envio via celular é 20MB para evitar falhas de rede.", "error");
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
       const base64Url = reader.result as string;
       const sizeFormatted = (file.size / 1024).toFixed(1) + " KB";
       
-      setActiveCapture({
-        id: "attached_" + Math.random().toString(36).substr(2, 9),
-        type: "attached",
-        url: base64Url,
-        name: file.name,
-        sizeFormatted,
-        fileType: file.type,
-      });
-
-      showToast(`Arquivo anexado: ${file.name}`, "success");
+      if (file.type.startsWith("image/")) {
+        // Automatically optimize/compress attached high-res screen/photos to keep payload light
+        const img = new Image();
+        img.src = base64Url;
+        img.onload = () => {
+          const maxDim = 1200; // Optimal budget resolution for beautiful high-quality email receipt
+          let width = img.width;
+          let height = img.height;
+          
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const optimizedBase64 = canvas.toDataURL("image/jpeg", 0.82);
+            const optimizedSize = Math.round((optimizedBase64.length * 3) / 4);
+            const optimizedSizeFormatted = (optimizedSize / 1024).toFixed(1) + " KB";
+            
+            setActiveCapture({
+              id: "attached_" + Math.random().toString(36).substr(2, 9),
+              type: "attached",
+              url: optimizedBase64,
+              name: file.name.replace(/\.[^/.]+$/, "") + ".jpg", // convert to safe .jpg
+              sizeFormatted: optimizedSizeFormatted,
+              fileType: "image/jpeg",
+            });
+            showToast(`Foto anexada e otimizada (${optimizedSizeFormatted}) com sucesso!`, "success");
+          } else {
+            setActiveCapture({
+              id: "attached_" + Math.random().toString(36).substr(2, 9),
+              type: "attached",
+              url: base64Url,
+              name: file.name,
+              sizeFormatted,
+              fileType: file.type,
+            });
+            showToast(`Arquivo anexado: ${file.name}`, "success");
+          }
+        };
+        img.onerror = () => {
+          setActiveCapture({
+            id: "attached_" + Math.random().toString(36).substr(2, 9),
+            type: "attached",
+            url: base64Url,
+            name: file.name,
+            sizeFormatted,
+            fileType: file.type,
+          });
+          showToast(`Arquivo anexado: ${file.name}`, "success");
+        };
+      } else {
+        // Video under 20MB is attached directly
+        setActiveCapture({
+          id: "attached_" + Math.random().toString(36).substr(2, 9),
+          type: "attached",
+          url: base64Url,
+          name: file.name,
+          sizeFormatted,
+          fileType: file.type,
+        });
+        showToast(`Vídeo anexado com sucesso! (${sizeFormatted})`, "success");
+      }
     };
     reader.onerror = () => {
       showToast("Erro ao processar o arquivo anexado.", "error");
@@ -180,7 +249,7 @@ export default function App() {
         smtp: smtpConfig.host ? smtpConfig : undefined, // pass SMTP parameters if filled
       };
 
-      const res = await fetch("/api/send-email", {
+      const res = await fetch(`${window.location.origin}/api/send-email`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -216,7 +285,7 @@ export default function App() {
 
   const handleClearHistory = async () => {
     try {
-      const res = await fetch("/api/emails/clear", { method: "POST" });
+      const res = await fetch(`${window.location.origin}/api/emails/clear`, { method: "POST" });
       if (res.ok) {
         showToast("Histórico de envios limpo.", "success");
         fetchOutbox();
