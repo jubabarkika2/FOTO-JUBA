@@ -105,41 +105,21 @@ app.post("/api/send-email", async (req, res) => {
   if (activeSmtp.host && activeSmtp.user && activeSmtp.pass) {
     try {
       console.log(`[SMTP REAL] Conectando ao host: ${activeSmtp.host}:${activeSmtp.port} (SSL/TLS: ${activeSmtp.secure}) como: ${activeSmtp.user}`);
-      let transportConfig: any;
-
-      // Gmail optimized built-in preset to bypass container port blocks and greeting handshaking timeouts!
-      if (activeSmtp.host.toLowerCase().includes("gmail") || activeSmtp.user.toLowerCase().includes("gmail")) {
-        console.log(`[SMTP REAL] Provável e-mail ou host Gmail detectado (${activeSmtp.user}). Usando provedor "gmail" otimizado.`);
-        transportConfig = {
-          service: "gmail",
-          auth: {
-            user: activeSmtp.user,
-            pass: activeSmtp.pass,
-          },
-          tls: {
-            rejectUnauthorized: false
-          }
-        };
-      } else {
-        transportConfig = {
-          host: activeSmtp.host,
-          port: parseInt(activeSmtp.port, 10) || 587,
-          secure: activeSmtp.secure, // true for 465, false for other ports
-          auth: {
-            user: activeSmtp.user,
-            pass: activeSmtp.pass,
-          },
-          connectionTimeout: 15000, // 15 seconds connection timeout
-          greetingTimeout: 12000,   // More generous handshake greeting timeout
-          socketTimeout: 20000,
-          tls: {
-            rejectUnauthorized: false // Ignore self-signed certificate errors to maximize ease of deployment
-          }
-        };
-      }
-
-      console.log(`[SMTP REAL] Inicializando transporter Nodemailer...`);
-      const transporter = nodemailer.createTransport(transportConfig);
+      const transporter = nodemailer.createTransport({
+        host: activeSmtp.host,
+        port: parseInt(activeSmtp.port, 10) || 587,
+        secure: activeSmtp.secure, // true for 465, false for other ports
+        auth: {
+          user: activeSmtp.user,
+          pass: activeSmtp.pass,
+        },
+        connectionTimeout: 10000, // 10 seconds connection timeout
+        greetingTimeout: 8000,
+        socketTimeout: 15000,
+        tls: {
+          rejectUnauthorized: false // Ignore self-signed certificate errors to maximize ease of deployment
+        }
+      });
 
       const mailOptions: any = {
         from: activeSmtp.user,

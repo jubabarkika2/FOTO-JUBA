@@ -20,39 +20,15 @@ import OutboxHistory from "./components/OutboxHistory";
 import { ActiveCapture, EmailHistoryItem, SmtpConfig } from "./types";
 import { playBeepSound } from "./utils/audio";
 
-// Safe memory and local storage fallback helper to support strict mobile sandboxes / Safari / iOS browsers
-const memoryLocalStorageBackup: Record<string, string> = {
-  juba_dest_email: "jubabarkika2@gmail.com",
-};
-
-const safeStorage = {
-  getItem: (key: string): string | null => {
-    try {
-      return localStorage.getItem(key);
-    } catch (e) {
-      console.warn(`[SafeStorage] Failed to read ${key} from localStorage, using memory fallback:`, e);
-      return memoryLocalStorageBackup[key] || null;
-    }
-  },
-  setItem: (key: string, value: string): void => {
-    try {
-      localStorage.setItem(key, value);
-    } catch (e) {
-      console.warn(`[SafeStorage] Failed to save ${key} to localStorage, using memory fallback:`, e);
-      memoryLocalStorageBackup[key] = value;
-    }
-  }
-};
-
 export default function App() {
-  // Load initial settings with safe fallback storage
+  // Load initial settings
   const [savedEmail, setSavedEmail] = useState<string>(() => {
-    return safeStorage.getItem("juba_dest_email") || "jubabarkika2@gmail.com";
+    return localStorage.getItem("juba_dest_email") || "jubabarkika2@gmail.com";
   });
 
   const [smtpConfig, setSmtpConfig] = useState<SmtpConfig>(() => {
     try {
-      const stored = safeStorage.getItem("juba_smtp_config");
+      const stored = localStorage.getItem("juba_smtp_config");
       if (stored) return JSON.parse(stored);
     } catch (e) {}
     return { host: "", port: "587", user: "", pass: "", secure: false };
@@ -113,13 +89,13 @@ export default function App() {
 
   const handleSaveEmail = (email: string) => {
     setSavedEmail(email);
-    safeStorage.setItem("juba_dest_email", email);
+    localStorage.setItem("juba_dest_email", email);
     showToast(`E-mail de destino atualizado: ${email}`, "success");
   };
 
   const handleSaveSmtp = (config: SmtpConfig) => {
     setSmtpConfig(config);
-    safeStorage.setItem("juba_smtp_config", JSON.stringify(config));
+    localStorage.setItem("juba_smtp_config", JSON.stringify(config));
   };
 
   // Capture callback
@@ -147,90 +123,21 @@ export default function App() {
       return;
     }
 
-    // Limit video attachments to 20MB to prevent browser/network overflows
-    if (file.type.startsWith("video/") && file.size > 20 * 1024 * 1024) {
-      showToast("O vídeo é muito grande. O limite para envio via celular é 20MB para evitar falhas de rede.", "error");
-      return;
-    }
-
     const reader = new FileReader();
     reader.onload = () => {
       const base64Url = reader.result as string;
       const sizeFormatted = (file.size / 1024).toFixed(1) + " KB";
       
-      if (file.type.startsWith("image/")) {
-        // Automatically optimize/compress attached high-res screen/photos to keep payload light
-        const img = new Image();
-        img.src = base64Url;
-        img.onload = () => {
-          const maxDim = 1200; // Optimal budget resolution for beautiful high-quality email receipt
-          let width = img.width;
-          let height = img.height;
-          
-          if (width > maxDim || height > maxDim) {
-            if (width > height) {
-              height = Math.round((height * maxDim) / width);
-              width = maxDim;
-            } else {
-              width = Math.round((width * maxDim) / height);
-              height = maxDim;
-            }
-          }
-          
-          const canvas = document.createElement("canvas");
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext("2d");
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-            const optimizedBase64 = canvas.toDataURL("image/jpeg", 0.82);
-            const optimizedSize = Math.round((optimizedBase64.length * 3) / 4);
-            const optimizedSizeFormatted = (optimizedSize / 1024).toFixed(1) + " KB";
-            
-            setActiveCapture({
-              id: "attached_" + Math.random().toString(36).substr(2, 9),
-              type: "attached",
-              url: optimizedBase64,
-              name: file.name.replace(/\.[^/.]+$/, "") + ".jpg", // convert to safe .jpg
-              sizeFormatted: optimizedSizeFormatted,
-              fileType: "image/jpeg",
-            });
-            showToast(`Foto anexada e otimizada (${optimizedSizeFormatted}) com sucesso!`, "success");
-          } else {
-            setActiveCapture({
-              id: "attached_" + Math.random().toString(36).substr(2, 9),
-              type: "attached",
-              url: base64Url,
-              name: file.name,
-              sizeFormatted,
-              fileType: file.type,
-            });
-            showToast(`Arquivo anexado: ${file.name}`, "success");
-          }
-        };
-        img.onerror = () => {
-          setActiveCapture({
-            id: "attached_" + Math.random().toString(36).substr(2, 9),
-            type: "attached",
-            url: base64Url,
-            name: file.name,
-            sizeFormatted,
-            fileType: file.type,
-          });
-          showToast(`Arquivo anexado: ${file.name}`, "success");
-        };
-      } else {
-        // Video under 20MB is attached directly
-        setActiveCapture({
-          id: "attached_" + Math.random().toString(36).substr(2, 9),
-          type: "attached",
-          url: base64Url,
-          name: file.name,
-          sizeFormatted,
-          fileType: file.type,
-        });
-        showToast(`Vídeo anexado com sucesso! (${sizeFormatted})`, "success");
-      }
+      setActiveCapture({
+        id: "attached_" + Math.random().toString(36).substr(2, 9),
+        type: "attached",
+        url: base64Url,
+        name: file.name,
+        sizeFormatted,
+        fileType: file.type,
+      });
+
+      showToast(`Arquivo anexado: ${file.name}`, "success");
     };
     reader.onerror = () => {
       showToast("Erro ao processar o arquivo anexado.", "error");
@@ -281,13 +188,7 @@ export default function App() {
         body: JSON.stringify(payload),
       });
 
-      let result: any = {};
-      const responseText = await res.text();
-      try {
-        result = JSON.parse(responseText);
-      } catch (err) {
-        result = { error: `Erro de resposta do servidor (HTTP ${res.status}): ${responseText.substring(0, 160) || "Resposta vazia"}` };
-      }
+      const result = await res.json();
 
       if (res.ok) {
         // Success
@@ -296,7 +197,7 @@ export default function App() {
         fetchOutbox(); // refresh history list
       } else {
         // API error
-        showToast(result.error || `Erro (${res.status}): Falha no envio do e-mail.`, "error");
+        showToast(result.error || "Erro no envio do e-mail. Verifique suas conexões.", "error");
         fetchOutbox(); // refresh logs because failed state logging was saved in metadata outbox
       }
     } catch (e: any) {
@@ -434,8 +335,8 @@ export default function App() {
       </header>
 
       {/* MAIN VIEWPORT CAMERA AREA (Janela de camera inteira) */}
-      <main className="flex-1 w-full relative z-10 pt-18 flex flex-col">
-
+      <main className="flex-1 w-full relative z-10 pt-18">
+        
         {/* Full Screen Viewfinder layer */}
         <CameraViewfinder
           cameraMode={cameraMode}
